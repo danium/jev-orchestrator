@@ -1,0 +1,16 @@
+{
+  "name": "jev-orchestrator-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local runtime for the Jev Orchestrator Codex plugin.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "build": "node --experimental-transform-types scripts/build.ts",
+    "test": "npm run build && node --experimental-transform-types --test tests/offline.test.ts",
+    "start": "node --experimental-transform-types src/cli.ts",
+    "generate:protocol": "node scripts/generate-protocol.mjs"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "jev-orchestrator",
+  "interface": {
+    "displayName": "Jev Orchestrator"
+  },
+  "plugins": [
+    {
+      "name": "jev-orchestrator",
+      "source": {
+        "source": "local",
+        "path": "./plugins/jev-orchestrator"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

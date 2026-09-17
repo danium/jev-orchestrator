@@ -1,0 +1,38 @@
+{
+  "name": "jev-orchestrator",
+  "version": "0.1.0",
+  "description": "Route bounded Codex work through explicit capability, quota, verification, and human-review gates.",
+  "author": {
+    "name": "danium",
+    "url": "https://github.com/danium"
+  },
+  "homepage": "https://github.com/danium/jev-orchestrator#readme",
+  "repository": "https://github.com/danium/jev-orchestrator",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "orchestration",
+    "jev",
+    "typesafe",
+    "quota",
+    "windows"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Jev Orchestrator",
+    "shortDescription": "Route bounded Codex tasks with explicit safety gates.",
+    "longDescription": "A local Windows-first controller that filters eligible Codex profiles, optionally asks Jev for a route, verifies the resulting artifact, and records explicit acceptance.",
+    "developerName": "danium",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Prepare a safe offline route for this bounded task.",
+      "Run Jev Orchestrator doctor for this checkout.",
+      "Explain the active quota and verification gates."
+    ],
+    "brandColor": "#2563EB"
+  }
+}
