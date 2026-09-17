@@ -36,8 +36,7 @@ if (-not $known) {
   $state = $raw | ConvertFrom-Json
 }
 
-$installed = @($state.installed) | Where-Object { $_.name -eq "jev-orchestrator" }
-if (-not $SkipPluginInstall -and -not $installed) {
+if (-not $SkipPluginInstall) {
   & $codex.Source plugin add "jev-orchestrator@jev-orchestrator"
   if ($LASTEXITCODE -ne 0) {
     throw "Codex could not install jev-orchestrator from its marketplace."
