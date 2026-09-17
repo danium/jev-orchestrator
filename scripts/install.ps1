@@ -11,10 +11,26 @@ if (-not (Test-Path -LiteralPath $marketplace -PathType Leaf)) {
   throw "No marketplace manifest found at $marketplace"
 }
 
-$codex = Get-Command codex.exe -ErrorAction Stop
+$codexCommand = Get-Command codex.exe -ErrorAction SilentlyContinue
+if ($codexCommand) {
+  $codexPath = $codexCommand.Source
+} else {
+  $localAppData = $env:LOCALAPPDATA
+  if ([string]::IsNullOrWhiteSpace($localAppData)) {
+    $localAppData = [Environment]::GetFolderPath("LocalApplicationData")
+  }
+  $codexBin = Join-Path $localAppData "OpenAI\Codex\bin"
+  $codexPath = Get-ChildItem -LiteralPath $codexBin -Filter codex.exe -File -Recurse -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
+  if (-not $codexPath) {
+    throw "Could not find codex.exe on PATH or under $codexBin. Install or update the Codex desktop app first."
+  }
+}
+
 $state = $null
 try {
-  $raw = & $codex.Source plugin list --marketplace jev-orchestrator --available --json 2>$null
+  $raw = & $codexPath plugin list --marketplace jev-orchestrator --available --json 2>$null
   if ($LASTEXITCODE -eq 0) {
     $state = $raw | ConvertFrom-Json
   }
@@ -25,11 +41,11 @@ try {
 $known = @($state.installed) + @($state.available) |
   Where-Object { $_.name -eq "jev-orchestrator" }
 if (-not $known) {
-  & $codex.Source plugin marketplace add $root
+  & $codexPath plugin marketplace add $root
   if ($LASTEXITCODE -ne 0) {
     throw "Codex could not add the Jev Orchestrator marketplace."
   }
-  $raw = & $codex.Source plugin list --marketplace jev-orchestrator --available --json
+  $raw = & $codexPath plugin list --marketplace jev-orchestrator --available --json
   if ($LASTEXITCODE -ne 0) {
     throw "Codex did not expose the Jev Orchestrator marketplace after adding it."
   }
@@ -37,7 +53,7 @@ if (-not $known) {
 }
 
 if (-not $SkipPluginInstall) {
-  & $codex.Source plugin add "jev-orchestrator@jev-orchestrator"
+  & $codexPath plugin add "jev-orchestrator@jev-orchestrator"
   if ($LASTEXITCODE -ne 0) {
     throw "Codex could not install jev-orchestrator from its marketplace."
   }
