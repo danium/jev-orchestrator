@@ -383,6 +383,11 @@ test("Windows-safe executable resolution refuses command shims and strips secret
   writeFileSync(shim, "fixture");
   assert.equal(resolveExecutable(exe)?.path, exe);
   assert.equal(resolveExecutable(shim), null);
+  const localAppData = join(root, "local-app-data");
+  const desktopExe = join(localAppData, "OpenAI", "Codex", "bin", "fixture-build", "codex.exe");
+  mkdirSync(join(localAppData, "OpenAI", "Codex", "bin", "fixture-build"), { recursive: true });
+  writeFileSync(desktopExe, "fixture");
+  assert.equal(resolveExecutable("codex", { PATH: "", LOCALAPPDATA: localAppData })?.path, desktopExe);
   const env = sanitizedChildEnvironment({
     PATH: "path",
     CODEX_HOME: "C:\\Users\\fixture\\.codex",

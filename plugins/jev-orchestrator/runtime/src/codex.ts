@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
@@ -230,6 +230,26 @@ export type ResolvedExecutable = {
 
 const isShim = (path: string): boolean => [".cmd", ".bat", ".ps1"].includes(extname(path).toLowerCase());
 
+const desktopCodexExecutable = (env: NodeJS.ProcessEnv): ResolvedExecutable | null => {
+  if (process.platform !== "win32") return null;
+  const localAppData = env.LOCALAPPDATA;
+  if (!localAppData) return null;
+  const bin = join(localAppData, "OpenAI", "Codex", "bin");
+  if (!existsSync(bin)) return null;
+  const candidates = readdirSync(bin, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(bin, entry.name, "codex.exe"))
+    .filter(existsSync)
+    .sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs);
+  if (candidates.length === 0) return null;
+  return {
+    path: resolve(candidates[0]),
+    args: [],
+    source: "path",
+    native: true,
+  };
+};
+
 export const resolveExecutable = (
   command: string,
   env: NodeJS.ProcessEnv = process.env,
@@ -254,7 +274,9 @@ export const resolveExecutable = (
       };
     }
   }
-  return null;
+  return !direct && windows && command.toLowerCase() === "codex"
+    ? desktopCodexExecutable(env)
+    : null;
 };
 
 export const environmentKind = (): "native-windows" | "wsl" | "unix" => {
