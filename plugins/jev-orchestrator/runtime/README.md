@@ -10,17 +10,21 @@ npm dependencies.
 ## Offline checks
 
     npm test
-    npm start -- setup --repo C:\path\to\checkout --json
-    npm start -- route --repo C:\path\to\checkout --objective "Describe the bounded task" --offline --json
+    $env:TYPESAFE_API_KEY = "your-typesafe-key"
+    npm start -- basic --repo C:\path\to\checkout --objective "Describe the bounded task" --json
 
 The tests use temporary repositories, mocked Jev responses, a fake App Server,
 and fake workers. They do not use model allowance.
 
-setup writes sanitized capabilities.json, quota.json, and account.json under
-%LOCALAPPDATA%\CodexQuotaOrchestrator. It creates profiles.json and the
-project verification draft only when they do not already exist. It never
-enables profiles, infers quota-pool mappings, changes global Codex settings,
-or starts a coding turn.
+basic writes sanitized capabilities.json, quota.json, and account.json under
+%LOCALAPPDATA%\CodexQuotaOrchestrator, then calls Jev on every route. It
+creates profiles.json and the project verification draft only when they do not
+already exist. It never uses a non-Jev fallback, enables advanced profiles,
+claims a model-to-pool mapping, changes global Codex settings, or starts a
+coding turn without explicit confirmation.
+
+setup remains available for advanced configuration and uses the same metadata
+cache without calling Jev.
 
 ## Live boundaries
 

@@ -448,6 +448,7 @@ export class CodexAppServer {
         models.push({
           id,
           model: stringValue(value.model) ?? undefined,
+          isDefault: value.isDefault === true,
           supportedReasoningEfforts: efforts,
           inputModalities: Array.isArray(value.inputModalities)
             ? value.inputModalities.filter((item): item is string => typeof item === "string")

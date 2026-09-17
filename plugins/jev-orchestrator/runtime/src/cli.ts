@@ -24,7 +24,7 @@ import { normalizeQuotaResponse } from "./quota.ts";
 import { routeTask, confirmPlan } from "./routing.ts";
 import { reportRuns } from "./report.ts";
 import { RunStore, type Worker } from "./run.ts";
-import { projectConfigDraft, writeSetupArtifacts } from "./setup.ts";
+import { basicConfig, projectConfigDraft, writeSetupArtifacts } from "./setup.ts";
 import { inspectGit, artifactFingerprint, type ProjectVerification } from "./workspace.ts";
 
 type Args = {
@@ -288,8 +288,58 @@ const setup = async (args: Args): Promise<void> => {
   }
 };
 
+const liveWorkerAllowed = (args: Args): boolean =>
+  args.flags.has("allow-live") && process.env.CODEX_ORCHESTRATOR_CONFIRM_LIVE === "I_AUTHORIZE";
+
+const executeConfirmedRun = async (input: {
+  args: Args;
+  server: CodexAppServer;
+  home: string;
+  task: TaskInput;
+  plan: ReturnType<typeof confirmPlan>;
+  inspection: Awaited<ReturnType<typeof inspectGit>>;
+  quota: ReturnType<typeof normalizeQuotaResponse>;
+}): Promise<void> => {
+  const store = new RunStore({ home: input.home });
+  const runId = value(input.args, "run-id", "run-" + Date.now()) as string;
+  const baseFingerprint = artifactFingerprint(input.inspection.path, input.inspection);
+  const record = store.create(runId, input.task, input.plan, input.inspection, baseFingerprint, input.quota);
+  const worker: Worker = {
+    async run(workerInput) {
+      let result: WorkerRunResult;
+      try {
+        result = await input.server.runTurn(
+          workerInput.profile.modelId,
+          workerInput.profile.effort.kind === "explicit" ? workerInput.profile.effort.value : null,
+          workerInput.repo,
+          workerInput.prompt,
+        );
+      } catch (error) {
+        return {
+          ok: false,
+          retryable: false,
+          category: "transport-unknown",
+          actualModelId: null,
+          actualEffort: null,
+          detail: String(error),
+        };
+      }
+      return {
+        ok: result.status === "completed",
+        retryable: false,
+        category: result.status === "completed" ? "completed" : "failed",
+        actualModelId: result.actualModelId,
+        actualEffort: result.actualEffort,
+        detail: result.messages.join("").slice(-2000) || result.status,
+      };
+    },
+    interrupt: () => input.server.interrupt(),
+  };
+  output(input.args, await store.execute(record.id, projectVerificationFor(input.inspection.path), worker));
+};
+
 const runLive = async (args: Args): Promise<void> => {
-  if (!args.flags.has("allow-live") || process.env.CODEX_ORCHESTRATOR_CONFIRM_LIVE !== "I_AUTHORIZE") {
+  if (!liveWorkerAllowed(args)) {
     throw new Error("live worker execution is blocked; use --allow-live and CODEX_ORCHESTRATOR_CONFIRM_LIVE=I_AUTHORIZE after native gates pass");
   }
   const repo = resolve(value(args, "repo", process.cwd()) as string);
@@ -331,44 +381,64 @@ const runLive = async (args: Args): Promise<void> => {
     output(args, { ...routed, plan: confirmed, note: "re-run with --confirm-route after reviewing the plan" });
     return;
   }
-  const store = new RunStore({ home });
-  const runId = value(args, "run-id", "run-" + Date.now()) as string;
-  const baseFingerprint = artifactFingerprint(inspection.path, inspection);
-  const record = store.create(runId, task, confirmed, inspection, baseFingerprint, quota);
-  const worker: Worker = {
-    async run(input) {
-      let result: WorkerRunResult;
-      try {
-        result = await server.runTurn(
-          input.profile.modelId,
-          input.profile.effort.kind === "explicit" ? input.profile.effort.value : null,
-          input.repo,
-          input.prompt,
-        );
-      } catch (error) {
-        return {
-          ok: false,
-          retryable: false,
-          category: "transport-unknown",
-          actualModelId: null,
-          actualEffort: null,
-          detail: String(error),
-        };
-      }
-      return {
-        ok: result.status === "completed",
-        retryable: false,
-        category: result.status === "completed" ? "completed" : "failed",
-        actualModelId: result.actualModelId,
-        actualEffort: result.actualEffort,
-        detail: result.messages.join("").slice(-2000) || result.status,
-      };
-    },
-    interrupt: () => server.interrupt(),
-  };
   try {
-    const final = await store.execute(record.id, projectVerificationFor(repo), worker);
-    output(args, final);
+    await executeConfirmedRun({ args, server, home, task, plan: confirmed, inspection, quota });
+  } finally {
+    await server.close();
+  }
+};
+
+const basic = async (args: Args): Promise<void> => {
+  const key = process.env.TYPESAFE_API_KEY;
+  if (!key) throw new Error("Basic mode requires TYPESAFE_API_KEY; it never falls back to a non-Jev route.");
+  const repo = resolve(value(args, "repo", process.cwd()) as string);
+  const home = assertHomeOutsideRepo(homeFor(args), repo);
+  const task = taskFor(args);
+  const executable = resolveExecutable("codex");
+  if (!executable) throw new Error("native codex.exe is unavailable");
+  const server = CodexAppServer.start({ executable, cwd: repo });
+  try {
+    await server.initialize();
+    const account = await server.account();
+    if (!account.auth.managedLogin) {
+      throw new Error("Basic mode requires managed ChatGPT authentication; no account switch or API fallback is attempted");
+    }
+    const capabilities = await server.models();
+    const quota = normalizeQuotaResponse(await server.rateLimits(), account.auth);
+    writeSetupArtifacts({ home, repo, authentication: account.auth, capabilities, quota });
+    const config = basicConfig(capabilities, quota);
+    const inspection = await inspectGit(repo);
+    const routed = await routeTask({
+      config,
+      task,
+      capabilities,
+      quota,
+      repository: { path: inspection.path, identity: inspection.identity, baseRevision: inspection.revision },
+      typesafeKey: key,
+      typesafeConsent: true,
+      allowObservedPoolSet: true,
+    });
+    if (routed.plan.routeSource !== "typesafe") {
+      throw new Error("Jev did not produce a route: " + (routed.errors.join("; ") || "unknown failure"));
+    }
+    if (!routed.plan.profileId || !args.flags.has("confirm-route")) {
+      output(args, {
+        ...routed,
+        note: routed.plan.profileId
+          ? "Jev route is ready. Re-run with --confirm-route --allow-live only after reviewing it."
+          : "Jev deferred or requested more information; no worker was started.",
+      });
+      return;
+    }
+    if (!liveWorkerAllowed(args)) {
+      output(args, {
+        ...routed,
+        note: "Jev route is ready, but live execution remains blocked until --allow-live and CODEX_ORCHESTRATOR_CONFIRM_LIVE=I_AUTHORIZE are supplied.",
+      });
+      return;
+    }
+    const confirmed = confirmPlan(routed.plan, routed.plan.profileId);
+    await executeConfirmedRun({ args, server, home, task, plan: confirmed, inspection, quota });
   } finally {
     await server.close();
   }
@@ -382,6 +452,7 @@ const main = async (argv = process.argv.slice(2)): Promise<void> => {
   if (args.command === "route") return route(args);
   if (args.command === "init") return init(args);
   if (args.command === "setup") return setup(args);
+  if (args.command === "basic") return basic(args);
   if (args.command === "run") return runLive(args);
   if (args.command === "status") {
     const store = new RunStore({ home: homeFor(args) });
@@ -403,7 +474,7 @@ const main = async (argv = process.argv.slice(2)): Promise<void> => {
     output(args, reportRuns(store.list()));
     return;
   }
-  throw new Error("usage: doctor | init | setup | profiles | quota | route | run | status | accept | reject | report");
+  throw new Error("usage: basic | doctor | init | setup | profiles | quota | route | run | status | accept | reject | report");
 };
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

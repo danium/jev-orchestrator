@@ -5,8 +5,8 @@ development tasks. It keeps profile capability, quota eligibility, Jev routing,
 worker execution, verification, and human acceptance separate.
 
 It is not a quota bypass, does not promise savings, does not use an OpenAI API
-key as a worker fallback, and does not run a real worker or a live Jev request
-without explicit authorization.
+key as a worker fallback, and does not run a real worker without explicit
+authorization. Basic mode always routes through Jev with TYPESAFE_API_KEY.
 
 ## What the plugin provides
 
@@ -32,13 +32,15 @@ Start a new Codex thread after installing so the skill is discovered.
 From plugins/jev-orchestrator/runtime:
 
     npm test
-    npm start -- setup --repo C:\path\to\checkout --json
-    npm start -- route --repo C:\path\to\checkout --objective "Describe the bounded task" --offline --json
+    $env:TYPESAFE_API_KEY = "your-typesafe-key"
+    npm start -- basic --repo C:\path\to\checkout --objective "Describe the bounded task" --json
 
-setup reads account/model/quota metadata without starting a coding turn,
-creates only disabled policy drafts, and caches sanitized metadata outside the
-checkout. Review and explicitly enable profiles, bind actual quota pools, and
-set meaningful checks before routing work.
+basic discovers and caches account/model/quota metadata automatically, then
+always asks Jev to select the current Codex default or abstain. It does not
+fall back to a non-Jev route. A missing or failed Jev key blocks the route.
+
+setup remains available for advanced configuration: explicit profile choice,
+verified quota-pool bindings, and frozen checks.
 
 ## Status
 

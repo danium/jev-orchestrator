@@ -72,6 +72,7 @@ export type TaskInput = {
 export type ModelCapability = {
   id: string;
   model?: string;
+  isDefault?: boolean;
   supportedReasoningEfforts: string[];
   inputModalities?: string[];
   serviceTiers?: string[];

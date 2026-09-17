@@ -1,6 +1,6 @@
 {
   "name": "jev-orchestrator",
-  "version": "0.1.0+codex.20260917111928",
+  "version": "0.1.0+codex.20260917114430",
   "description": "Route bounded Codex work through explicit capability, quota, verification, and human-review gates.",
   "author": {
     "name": "danium",
@@ -29,7 +29,7 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Prepare a safe offline route for this bounded task.",
+      "Run a Jev-first basic route for this bounded task.",
       "Run Jev Orchestrator doctor for this checkout.",
       "Explain the active quota and verification gates."
     ],

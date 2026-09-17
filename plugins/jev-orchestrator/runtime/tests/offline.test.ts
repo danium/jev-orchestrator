@@ -43,7 +43,7 @@ import {
 import { readJournal } from "../src/journal.ts";
 import { reportRuns, accountUsageDeltas } from "../src/report.ts";
 import { RunStore, fakeWorker, type RunRecord } from "../src/run.ts";
-import { writeSetupArtifacts } from "../src/setup.ts";
+import { basicConfig, writeSetupArtifacts } from "../src/setup.ts";
 import {
   artifactFingerprint,
   acquireWorkspaceLock,
@@ -609,4 +609,37 @@ test("setup writes sanitized metadata and preserves existing policy drafts", () 
   assert.deepEqual(second.created, []);
   assert.equal(JSON.parse(readFileSync(profilePath, "utf8")).routing.model, "jev-fixture");
   assert.equal(JSON.parse(readFileSync(join(home, "quota.json"), "utf8")).pools[0].windows[0].usedPercent, 30);
+});
+
+test("basic mode builds one current-default candidate and still routes through Jev", async () => {
+  const defaultCapabilities = capabilities.map((capability, index) => ({
+    ...capability,
+    isDefault: index === 0,
+  }));
+  const config = basicConfig(defaultCapabilities, quotaFixture());
+  assert.equal(config.profiles.length, 1);
+  assert.equal(config.profiles[0].modelId, "model-one");
+  assert.equal(config.quotaBindings[0].evidence, "unknown");
+  assert.throws(() => basicConfig(capabilities, quotaFixture()), /default model/);
+
+  const keys = ["basic-current-default-implement", "needs_information", "defer_no_suitable_route"];
+  const routed = await routeTask({
+    config,
+    task: task(),
+    capabilities: defaultCapabilities,
+    quota: quotaFixture(),
+    repository: { path: "C:\\fixture", identity: "fixture", baseRevision: "abc" },
+    typesafeKey: "fixture-key",
+    typesafeConsent: true,
+    allowObservedPoolSet: true,
+    fetcher: async () => ({
+      ok: true,
+      status: 200,
+      statusText: "ok",
+      headers: { get: () => "jev-fixture" },
+      json: async () => validJev("basic-current-default-implement", keys),
+    }),
+  });
+  assert.equal(routed.plan.routeSource, "typesafe");
+  assert.equal(routed.plan.profileId, "basic-current-default-implement");
 });

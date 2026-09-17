@@ -66,6 +66,7 @@ export type RouteOptions = {
   typesafeKey?: string | null;
   typesafeConsent?: boolean;
   offline?: boolean;
+  allowObservedPoolSet?: boolean;
   fetcher?: Fetcher;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -129,12 +130,13 @@ export const eligibleProfiles = (
   capabilities: ModelCapability[],
   quota: QuotaSnapshot | null,
   nowMs = Date.now(),
+  options: { allowObservedPoolSet?: boolean } = {},
 ): { eligible: EligibleProfile[]; dropped: Array<{ profileId: string; reasons: string[] }> } => {
   const eligible: EligibleProfile[] = [];
   const dropped: Array<{ profileId: string; reasons: string[] }> = [];
   for (const profile of config.profiles) {
     const reasons = profile.enabled ? candidateReasons(profile, task, capabilities, config) : ["profile is disabled"];
-    const quotaResult = quotaDecision(profile, config, quota, capabilities, nowMs);
+    const quotaResult = quotaDecision(profile, config, quota, capabilities, nowMs, options);
     const allReasons = [...reasons, ...quotaResult.reasons];
     if (allReasons.length === 0) {
       eligible.push({
@@ -316,6 +318,7 @@ export const routeTask = async (options: RouteOptions): Promise<RouteResult> => 
     options.capabilities,
     options.quota,
     nowMs,
+    { allowObservedPoolSet: options.allowObservedPoolSet },
   );
   const request = buildChoiceRequest(options.task, eligible, options.config.routing.model);
   if (eligible.length === 0) return manualResult(options, eligible, dropped, request, "no eligible profile");

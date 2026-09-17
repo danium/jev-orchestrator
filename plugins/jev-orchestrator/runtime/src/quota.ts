@@ -55,6 +55,10 @@ export type QuotaDecision = {
   creditSafety: "unknown";
 };
 
+export type QuotaDecisionOptions = {
+  allowObservedPoolSet?: boolean;
+};
+
 export type UsageObservation = {
   key: string;
   observedAt: string;
@@ -280,6 +284,7 @@ export const quotaDecision = (
   snapshot: QuotaSnapshot | null,
   capabilities: ModelCapability[],
   nowMs = Date.now(),
+  options: QuotaDecisionOptions = {},
 ): QuotaDecision => {
   const reasons: string[] = [];
   const warnings: string[] = ["purchased-credit overflow protection is not established"];
@@ -300,7 +305,13 @@ export const quotaDecision = (
   }
   if (!snapshot.account.authenticated) reasons.push("account is not authenticated");
   if (!binding) reasons.push("profile has no explicit quota binding");
-  if (binding?.evidence === "unknown") reasons.push("quota binding evidence is unknown");
+  if (binding?.evidence === "unknown") {
+    if (options.allowObservedPoolSet) {
+      warnings.push("observed pool set is not a verified model-to-pool mapping");
+    } else {
+      reasons.push("quota binding evidence is unknown");
+    }
+  }
   if (
     binding &&
     binding.modelIds &&
@@ -324,6 +335,9 @@ export const quotaDecision = (
     ? snapshot.pools.filter((pool) => binding.poolIds.includes(pool.id))
     : [];
   if (binding && pools.length === 0) reasons.push("explicit quota pools are absent from the snapshot");
+  if (options.allowObservedPoolSet && binding && pools.length !== binding.poolIds.length) {
+    reasons.push("one or more observed quota pools are absent from the snapshot");
+  }
   const usablePools = pools.filter((pool) => {
     if (pool.ordinaryUsageAllowed === false || pool.spendControlReached === true) return false;
     return pool.windows.length > 0 && pool.windows.every((window) => {
@@ -336,6 +350,9 @@ export const quotaDecision = (
   });
   if (pools.length > 0 && usablePools.length === 0) {
     reasons.push("all explicitly applicable quota windows are exhausted, reserved, or unknown");
+  }
+  if (options.allowObservedPoolSet && pools.length > 0 && usablePools.length !== pools.length) {
+    reasons.push("an observed quota pool is exhausted, reserved, or unknown");
   }
   return {
     eligible: reasons.length === 0 && usablePools.length > 0,
