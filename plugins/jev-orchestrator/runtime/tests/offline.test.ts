@@ -647,4 +647,37 @@ test("basic mode builds one current-default candidate and still routes through J
   });
   assert.equal(routed.plan.routeSource, "typesafe");
   assert.equal(routed.plan.profileId, "basic-current-default-implement");
+
+  const exhaustedQuota = quotaFixture(100);
+  const strict = await routeTask({
+    config: basicConfig(defaultCapabilities, exhaustedQuota),
+    task: task(),
+    capabilities: defaultCapabilities,
+    quota: exhaustedQuota,
+    repository: { path: "C:\\fixture", identity: "fixture", baseRevision: "abc" },
+    offline: true,
+    allowObservedPoolSet: true,
+  });
+  assert.equal(strict.eligible.length, 0);
+
+  const routeBeforeExecutionGate = await routeTask({
+    config: basicConfig(defaultCapabilities, exhaustedQuota),
+    task: task(),
+    capabilities: defaultCapabilities,
+    quota: exhaustedQuota,
+    repository: { path: "C:\\fixture", identity: "fixture", baseRevision: "abc" },
+    typesafeKey: "fixture-key",
+    typesafeConsent: true,
+    allowObservedPoolSet: true,
+    skipQuotaEligibility: true,
+    fetcher: async () => ({
+      ok: true,
+      status: 200,
+      statusText: "ok",
+      headers: { get: () => "jev-fixture" },
+      json: async () => validJev("basic-current-default-implement", keys),
+    }),
+  });
+  assert.equal(routeBeforeExecutionGate.plan.routeSource, "typesafe");
+  assert.equal(routeBeforeExecutionGate.plan.profileId, "basic-current-default-implement");
 });

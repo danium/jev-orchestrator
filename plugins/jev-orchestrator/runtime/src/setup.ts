@@ -33,11 +33,10 @@ export const projectConfigDraft = () => ({
 
 export const basicConfig = (
   capabilities: ModelCapability[],
-  quota: QuotaSnapshot,
+  quota: QuotaSnapshot | null,
 ): AppConfig => {
   const model = capabilities.find((candidate) => candidate.isDefault);
   if (!model) throw new Error("installed model list did not identify a default model");
-  if (quota.pools.length === 0) throw new Error("no quota pools were reported");
   const config = JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as AppConfig;
   const bindingId = "basic-observed-pools";
   config.profiles = [
@@ -57,10 +56,10 @@ export const basicConfig = (
   config.quotaBindings = [
     {
       id: bindingId,
-      poolIds: quota.pools.map((pool) => pool.id),
+      poolIds: quota?.pools.map((pool) => pool.id) ?? [],
       modelIds: [model.id],
       evidence: "unknown",
-      note: "Basic mode conservatively requires every observed pool to be usable. It does not claim a verified model-to-pool mapping.",
+      note: "Basic mode routes through Jev before quota admission. It does not claim a verified model-to-pool mapping.",
     },
   ];
   return config;

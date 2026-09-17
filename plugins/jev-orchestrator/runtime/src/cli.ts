@@ -20,7 +20,7 @@ import {
   runExecutable,
   type WorkerRunResult,
 } from "./codex.ts";
-import { normalizeQuotaResponse } from "./quota.ts";
+import { normalizeQuotaResponse, quotaDecision } from "./quota.ts";
 import { routeTask, confirmPlan } from "./routing.ts";
 import { reportRuns } from "./report.ts";
 import { RunStore, type Worker } from "./run.ts";
@@ -404,8 +404,14 @@ const basic = async (args: Args): Promise<void> => {
       throw new Error("Basic mode requires managed ChatGPT authentication; no account switch or API fallback is attempted");
     }
     const capabilities = await server.models();
-    const quota = normalizeQuotaResponse(await server.rateLimits(), account.auth);
-    writeSetupArtifacts({ home, repo, authentication: account.auth, capabilities, quota });
+    let quota: ReturnType<typeof normalizeQuotaResponse> | null = null;
+    let quotaReadError: string | null = null;
+    try {
+      quota = normalizeQuotaResponse(await server.rateLimits(), account.auth);
+      writeSetupArtifacts({ home, repo, authentication: account.auth, capabilities, quota });
+    } catch (error) {
+      quotaReadError = String(error);
+    }
     const config = basicConfig(capabilities, quota);
     const inspection = await inspectGit(repo);
     const routed = await routeTask({
@@ -417,6 +423,7 @@ const basic = async (args: Args): Promise<void> => {
       typesafeKey: key,
       typesafeConsent: true,
       allowObservedPoolSet: true,
+      skipQuotaEligibility: true,
     });
     if (routed.plan.routeSource !== "typesafe") {
       throw new Error("Jev did not produce a route: " + (routed.errors.join("; ") || "unknown failure"));
@@ -424,6 +431,7 @@ const basic = async (args: Args): Promise<void> => {
     if (!routed.plan.profileId || !args.flags.has("confirm-route")) {
       output(args, {
         ...routed,
+        quotaReadError,
         note: routed.plan.profileId
           ? "Jev route is ready. Re-run with --confirm-route --allow-live only after reviewing it."
           : "Jev deferred or requested more information; no worker was started.",
@@ -433,7 +441,33 @@ const basic = async (args: Args): Promise<void> => {
     if (!liveWorkerAllowed(args)) {
       output(args, {
         ...routed,
+        quotaReadError,
         note: "Jev route is ready, but live execution remains blocked until --allow-live and CODEX_ORCHESTRATOR_CONFIRM_LIVE=I_AUTHORIZE are supplied.",
+      });
+      return;
+    }
+    if (!quota) {
+      output(args, {
+        ...routed,
+        quotaReadError,
+        note: "Jev route is ready, but worker execution is blocked because quota metadata could not be read.",
+      });
+      return;
+    }
+    const executionQuota = quotaDecision(
+      config.profiles[0],
+      config,
+      quota,
+      capabilities,
+      Date.now(),
+      { allowObservedPoolSet: true },
+    );
+    if (!executionQuota.eligible) {
+      output(args, {
+        ...routed,
+        quotaReadError,
+        executionQuota,
+        note: "Jev route is ready, but worker execution is blocked by the current quota gate.",
       });
       return;
     }

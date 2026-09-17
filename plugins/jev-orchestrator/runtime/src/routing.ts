@@ -67,6 +67,7 @@ export type RouteOptions = {
   typesafeConsent?: boolean;
   offline?: boolean;
   allowObservedPoolSet?: boolean;
+  skipQuotaEligibility?: boolean;
   fetcher?: Fetcher;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -130,19 +131,24 @@ export const eligibleProfiles = (
   capabilities: ModelCapability[],
   quota: QuotaSnapshot | null,
   nowMs = Date.now(),
-  options: { allowObservedPoolSet?: boolean } = {},
+  options: { allowObservedPoolSet?: boolean; skipQuotaEligibility?: boolean } = {},
 ): { eligible: EligibleProfile[]; dropped: Array<{ profileId: string; reasons: string[] }> } => {
   const eligible: EligibleProfile[] = [];
   const dropped: Array<{ profileId: string; reasons: string[] }> = [];
   for (const profile of config.profiles) {
     const reasons = profile.enabled ? candidateReasons(profile, task, capabilities, config) : ["profile is disabled"];
     const quotaResult = quotaDecision(profile, config, quota, capabilities, nowMs, options);
-    const allReasons = [...reasons, ...quotaResult.reasons];
+    const allReasons = options.skipQuotaEligibility
+      ? reasons
+      : [...reasons, ...quotaResult.reasons];
     if (allReasons.length === 0) {
       eligible.push({
         profile,
         reasons: [
           ...quotaResult.warnings,
+          ...(options.skipQuotaEligibility
+            ? quotaResult.reasons.map((reason) => "execution gate: " + reason)
+            : []),
           ...(profile.status === "candidate" ? ["candidate profile requires explicit route confirmation"] : []),
         ],
         quota: quotaResult,
@@ -318,7 +324,10 @@ export const routeTask = async (options: RouteOptions): Promise<RouteResult> => 
     options.capabilities,
     options.quota,
     nowMs,
-    { allowObservedPoolSet: options.allowObservedPoolSet },
+    {
+      allowObservedPoolSet: options.allowObservedPoolSet,
+      skipQuotaEligibility: options.skipQuotaEligibility,
+    },
   );
   const request = buildChoiceRequest(options.task, eligible, options.config.routing.model);
   if (eligible.length === 0) return manualResult(options, eligible, dropped, request, "no eligible profile");
