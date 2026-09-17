@@ -1,6 +1,6 @@
 {
   "name": "jev-orchestrator",
-  "version": "0.1.0",
+  "version": "0.1.0+codex.20260917111928",
   "description": "Route bounded Codex work through explicit capability, quota, verification, and human-review gates.",
   "author": {
     "name": "danium",

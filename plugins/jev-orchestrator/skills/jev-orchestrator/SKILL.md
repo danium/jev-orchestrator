@@ -13,9 +13,9 @@ and acceptance observable; it does not promise lower usage or bypass limits.
 
 ## Default workflow
 
-1. Start with doctor for the selected checkout. It is read-only and must not
-   read auth.json, alter global Codex configuration, change accounts, or start
-   a worker.
+1. On a new checkout, start with setup --repo. It reads App Server metadata
+   without starting a thread or turn, creates disabled policy drafts, and
+   caches sanitized capabilities/quota data outside the checkout.
 2. Require an explicit profile ID, model/effort capability, permission class,
    risk class, quota binding, and meaningful verification before a task is
    eligible.
@@ -43,8 +43,8 @@ credits, or substitute API-key execution.
 Run commands from the runtime directory using Node's TypeScript transform:
 
     npm test
-    npm start -- doctor --repo C:\path\to\checkout --json
-    npm start -- route --repo C:\path\to\checkout --task-file task.json --offline --json
+    npm start -- setup --repo C:\path\to\checkout --json
+    npm start -- route --repo C:\path\to\checkout --objective "Describe the bounded task" --offline --json
 
 The live run guard requires both --allow-live and
 CODEX_ORCHESTRATOR_CONFIRM_LIVE=I_AUTHORIZE. A route recommendation alone is

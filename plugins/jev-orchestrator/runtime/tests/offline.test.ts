@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { PassThrough } from "node:stream";
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -43,6 +43,7 @@ import {
 import { readJournal } from "../src/journal.ts";
 import { reportRuns, accountUsageDeltas } from "../src/report.ts";
 import { RunStore, fakeWorker, type RunRecord } from "../src/run.ts";
+import { writeSetupArtifacts } from "../src/setup.ts";
 import {
   artifactFingerprint,
   acquireWorkspaceLock,
@@ -572,4 +573,40 @@ test("workspace locks and dummy-process cancellation are ownership-scoped", asyn
   });
   const result = await ownProcess(dummy, 1000).kill();
   assert.equal(result, "stopped");
+});
+
+test("setup writes sanitized metadata and preserves existing policy drafts", () => {
+  const root = temp("setup");
+  const repo = join(root, "repo");
+  const home = join(root, "controller");
+  mkdirSync(repo, { recursive: true });
+  const first = writeSetupArtifacts({
+    home,
+    repo,
+    authentication: account(),
+    capabilities,
+    quota: quotaFixture(),
+  });
+  assert.equal(first.created.length, 2);
+  assert.equal(first.capabilityCount, capabilities.length);
+  assert.ok(existsSync(join(home, "capabilities.json")));
+  assert.ok(existsSync(join(home, "quota.json")));
+  assert.ok(existsSync(join(home, "account.json")));
+  assert.ok(existsSync(join(home, "profiles.json")));
+  assert.ok(existsSync(join(repo, ".codex-orchestrator.json")));
+
+  const profilePath = join(home, "profiles.json");
+  const profileDraft = JSON.parse(readFileSync(profilePath, "utf8")) as { routing: { model: string } };
+  profileDraft.routing.model = "jev-fixture";
+  writeFileSync(profilePath, JSON.stringify(profileDraft));
+  const second = writeSetupArtifacts({
+    home,
+    repo,
+    authentication: account(),
+    capabilities,
+    quota: quotaFixture(30),
+  });
+  assert.deepEqual(second.created, []);
+  assert.equal(JSON.parse(readFileSync(profilePath, "utf8")).routing.model, "jev-fixture");
+  assert.equal(JSON.parse(readFileSync(join(home, "quota.json"), "utf8")).pools[0].windows[0].usedPercent, 30);
 });

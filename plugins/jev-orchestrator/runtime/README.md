@@ -10,11 +10,17 @@ npm dependencies.
 ## Offline checks
 
     npm test
-    npm start -- doctor --repo C:\path\to\checkout --json
-    npm start -- route --repo C:\path\to\checkout --task-file task.json --offline --json
+    npm start -- setup --repo C:\path\to\checkout --json
+    npm start -- route --repo C:\path\to\checkout --objective "Describe the bounded task" --offline --json
 
 The tests use temporary repositories, mocked Jev responses, a fake App Server,
 and fake workers. They do not use model allowance.
+
+setup writes sanitized capabilities.json, quota.json, and account.json under
+%LOCALAPPDATA%\CodexQuotaOrchestrator. It creates profiles.json and the
+project verification draft only when they do not already exist. It never
+enables profiles, infers quota-pool mappings, changes global Codex settings,
+or starts a coding turn.
 
 ## Live boundaries
 

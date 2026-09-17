@@ -20,10 +20,11 @@ import {
   runExecutable,
   type WorkerRunResult,
 } from "./codex.ts";
-import { normalizeAccount, normalizeQuotaResponse } from "./quota.ts";
+import { normalizeQuotaResponse } from "./quota.ts";
 import { routeTask, confirmPlan } from "./routing.ts";
 import { reportRuns } from "./report.ts";
 import { RunStore, type Worker } from "./run.ts";
+import { projectConfigDraft, writeSetupArtifacts } from "./setup.ts";
 import { inspectGit, artifactFingerprint, type ProjectVerification } from "./workspace.ts";
 
 type Args = {
@@ -89,9 +90,9 @@ const quotaFor = (home: string): ReturnType<typeof JSON.parse> | null => {
   return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
 };
 
-const capabilitiesFor = (args: Args): ModelCapability[] => {
-  const path = value(args, "capabilities-file");
-  if (!path) return [];
+const capabilitiesFor = (args: Args, home: string): ModelCapability[] => {
+  const path = value(args, "capabilities-file", join(home, "capabilities.json")) as string;
+  if (!existsSync(path)) return [];
   const raw = JSON.parse(readFileSync(resolve(path), "utf8"));
   if (!Array.isArray(raw)) throw new Error("capabilities file must contain an array");
   return raw as ModelCapability[];
@@ -237,7 +238,7 @@ const route = async (args: Args): Promise<void> => {
   const result = await routeTask({
     config,
     task,
-    capabilities: capabilitiesFor(args),
+    capabilities: capabilitiesFor(args, home),
     quota: quotaFor(home),
     repository: {
       path: inspection.path,
@@ -260,27 +261,31 @@ const init = (args: Args): void => {
     throw new Error("init refuses to overwrite existing policy; review the files and update them explicitly");
   }
   writeJsonAtomic(profilePath, loadConfig(profilePath));
-  writeJsonAtomic(projectPath, {
-    schemaVersion: 1,
-    templateOnly: true,
-    workspaceMode: "dedicated-worktree",
-    scope: { includedPaths: [], excludedPaths: [] },
-    verification: { mode: "unconfigured", checks: [] },
-    typesafeDisclosure: {
-      approved: false,
-      allowedFields: [
-        "objective",
-        "acceptanceCriteria",
-        "scopeHints",
-        "requiredAccess",
-        "knownRisk",
-        "verificationAvailability",
-      ],
-      sendSourceFiles: false,
-      sendRawLogs: false,
-    },
-  });
+  writeJsonAtomic(projectPath, projectConfigDraft());
   output(args, { created: [profilePath, projectPath], note: "Nothing is enabled or approved by this draft." });
+};
+
+const setup = async (args: Args): Promise<void> => {
+  const repo = resolve(value(args, "repo", process.cwd()) as string);
+  const home = assertHomeOutsideRepo(homeFor(args), repo);
+  const executable = resolveExecutable("codex");
+  if (!executable) throw new Error("native codex.exe is unavailable");
+  const server = CodexAppServer.start({ executable, cwd: repo });
+  try {
+    await server.initialize();
+    const account = await server.account();
+    const capabilities = await server.models();
+    const quota = normalizeQuotaResponse(await server.rateLimits(), account.auth);
+    output(args, writeSetupArtifacts({
+      home,
+      repo,
+      authentication: account.auth,
+      capabilities,
+      quota,
+    }));
+  } finally {
+    await server.close();
+  }
 };
 
 const runLive = async (args: Args): Promise<void> => {
@@ -376,6 +381,7 @@ const main = async (argv = process.argv.slice(2)): Promise<void> => {
   if (args.command === "quota") return quota(args);
   if (args.command === "route") return route(args);
   if (args.command === "init") return init(args);
+  if (args.command === "setup") return setup(args);
   if (args.command === "run") return runLive(args);
   if (args.command === "status") {
     const store = new RunStore({ home: homeFor(args) });
@@ -397,7 +403,7 @@ const main = async (argv = process.argv.slice(2)): Promise<void> => {
     output(args, reportRuns(store.list()));
     return;
   }
-  throw new Error("usage: doctor | init | profiles | quota | route | run | status | accept | reject | report");
+  throw new Error("usage: doctor | init | setup | profiles | quota | route | run | status | accept | reject | report");
 };
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

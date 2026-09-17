@@ -20,24 +20,25 @@ without explicit authorization.
 
 ## Install from this public repository
 
-Clone the repository, then add its marketplace root to Codex:
+Clone the repository and run its installer:
 
     git clone https://github.com/danium/jev-orchestrator
-    codex plugin marketplace add C:\path\to\jev-orchestrator
-    codex plugin add jev-orchestrator@jev-orchestrator
+    & C:\path\to\jev-orchestrator\scripts\install.ps1
 
 Start a new Codex thread after installing so the skill is discovered.
 
-## Runtime checks
+## Setup a project
 
 From plugins/jev-orchestrator/runtime:
 
     npm test
-    npm start -- doctor --repo C:\path\to\checkout --json
-    npm start -- route --repo C:\path\to\checkout --task-file task.json --offline --json
+    npm start -- setup --repo C:\path\to\checkout --json
+    npm start -- route --repo C:\path\to\checkout --objective "Describe the bounded task" --offline --json
 
-Use the plugin skill for the staged workflow and safety gates. Read the
-runtime README before enabling a profile or attempting a native/live check.
+setup reads account/model/quota metadata without starting a coding turn,
+creates only disabled policy drafts, and caches sanitized metadata outside the
+checkout. Review and explicitly enable profiles, bind actual quota pools, and
+set meaningful checks before routing work.
 
 ## Status
 
